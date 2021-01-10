@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<script src="static/js/convert_units.js"></script>
-<script src="static/js/pico_recipe.js"></script>
+<script src="/static/js/convert_units.js"></script>
+<script src="/static/js/pico_recipe.js"></script>
 <script>var tables = {};</script>
 {% include "units_selector.html" %}
 <form id="f_new_recipe">
@@ -24,6 +24,9 @@
 </form>
 <div class="table-recipe table-sm table-striped table-bordered table-light" id="t_new_recipe"></div>
 <script>
+  recipe_table['rowMoved'] = function (row) {
+    isRowMoved(row);
+  }
   var table = new Tabulator("#t_new_recipe", recipe_table);
   table.setData(default_data);
   tables["new_recipe"] = table;

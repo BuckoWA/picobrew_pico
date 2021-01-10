@@ -1,7 +1,8 @@
 import json
+from pathlib import Path
 
-from .config import brew_active_sessions_path
-from .model import PicoBrewSession
+from .config import brew_active_sessions_path, ferm_active_sessions_path, iSpindel_active_sessions_path
+from .model import PicoBrewSession, PicoFermSession, iSpindelSession
 
 file_glob_pattern = "[!._]*.json"
 
@@ -11,24 +12,37 @@ active_still_sessions = {}
 active_iSpindel_sessions = {}
 
 
+def load_session_file(file):
+    json_data = {}
+    with open(file) as fp:
+        raw_data = fp.read().rstrip()
+        session = recover_incomplete_session(raw_data)
+        json_data = json.loads(session)
+
+    return json_data
+
+
+def recover_incomplete_session(raw_data):
+    recovered_session = raw_data
+    if raw_data == None or raw_data.endswith('[') or raw_data == '':
+        # Recover from aborted session data file
+        recovered_session = '[\n]'
+    elif raw_data.endswith(','):
+        # Recover from incomplete json data file
+        recovered_session = raw_data[:-1] + '\n]'
+
+    return recovered_session
+
+
 def load_brew_session(file):
     info = file.stem.split('#')
 
     # 0 = Date, 1 = UID, 2 = RFID / Session GUID (guid), 3 = Session Name, 4 = Session Type (integer - z only)
+    json_data = load_session_file(file)
+
     name = info[3].replace('_', ' ')
-
     step = ''
-    with open(file) as fp:
-        raw_data = fp.read().rstrip()
-        if raw_data.endswith(','):
-            # Recover from incomplete session json data file
-            raw_data = raw_data[:-1] + '\n]'
-        elif raw_data.endswith('[') or raw_data == '':
-            # Recover from aborted session data file
-            raw_data = '[\n]'
-        json_data = json.loads(raw_data)
     chart_id = info[0] + '_' + info[2]
-
     alias = '' if info[1] not in active_brew_sessions else active_brew_sessions[info[1]].alias
 
     session_type = None
@@ -38,6 +52,8 @@ def load_brew_session(file):
     session = {
         'date': info[0],
         'name': name,
+        'filename': Path(file).name,
+        'filepath': Path(file),
         'uid': info[1],
         'session': info[2],
         'is_pico': len(info[1]) == 32,
@@ -121,20 +137,22 @@ def get_brew_graph_data(chart_id, session_name, session_step, session_data, is_p
 
 def load_ferm_session(file):
     info = file.stem.split('#')
+
     # 0 = Date, 1 = Device UID
-    with open(file) as fp:
-        raw_data = fp.read().rstrip()
-        if raw_data.endswith(','):
-            # Recover from incomplete json data file
-            raw_data = raw_data[:-1] + '\n]'
-        json_data = json.loads(raw_data)
+    json_data = load_session_file(file)
+
     chart_id = info[0] + '_' + info[1]
     name = info[1]
-    if info[1] in active_ferm_sessions:
-        name = active_ferm_sessions[info[1]].alias
+    alias = info[1] if info[1] not in active_ferm_sessions else active_ferm_sessions[info[1]].alias
+
     return ({
+        'uid': info[1],
+        'filename': Path(file).name,
+        'filepath': Path(file),
+        'alias': alias,
         'date': info[0],
-        'name': name,
+        'name': name,  # should change to brew/user defined session name
+        'data': json_data,
         'graph': get_ferm_graph_data(chart_id, None, json_data)
     })
 
@@ -163,22 +181,24 @@ def get_ferm_graph_data(chart_id, voltage, session_data):
         graph_data.update({'subtitle': {'text': 'Voltage: ' + voltage}})
     return graph_data
 
+
 def load_iSpindel_session(file):
     info = file.stem.split('#')
+    
     # 0 = Date, 1 = Device UID
-    with open(file) as fp:
-        raw_data = fp.read().rstrip()
-        if raw_data.endswith(','):
-            # Recover from incomplete json data file
-            raw_data = raw_data[:-1] + '\n]'
-        json_data = json.loads(raw_data)
+    json_data = load_session_file(file)
+    
     chart_id = info[0] + '_' + str(info[1])
-    name = info[1]
-    if info[1] in active_iSpindel_sessions:
-        name = active_iSpindel_sessions[info[1]].alias
+    alias = info[1] if info[1] not in active_iSpindel_sessions else active_iSpindel_sessions[info[1]].alias
+    
     return ({
+        'uid': info[1],
+        'filename': Path(file).name,
+        'filepath': Path(file),
+        'alias': alias,
         'date': info[0],
-        'name': name,
+        'name': alias,  # should change to brew/user defined session name
+        'data': json_data,
         'graph': get_iSpindel_graph_data(chart_id, None, json_data)
     })
 
@@ -203,16 +223,14 @@ def get_iSpindel_graph_data(chart_id, voltage, session_data):
             }
         ],
     }
-    
+
     if voltage:
         graph_data.update({'subtitle': {'text': 'Voltage: ' + voltage}})
     return graph_data
 
-def restore_active_sessions():
-    # initialize active sessions during start up
-    if active_brew_sessions == {}:
-        # print('DEBUG: restore_active_sessions() fetching abandoned server active sessions')
 
+def restore_active_brew_sessions():
+    if active_brew_sessions == {}:
         active_brew_session_files = list(brew_active_sessions_path().glob(file_glob_pattern))
         for file in active_brew_session_files:
             # print('DEBUG: restore_active_sessions() found {} as an active session'.format(file))
@@ -242,3 +260,56 @@ def restore_active_sessions():
             session.is_pico = brew_session['is_pico']
             session.data = brew_session['data']
             active_brew_sessions[brew_session['uid']] = session
+
+
+def restore_active_ferm_sessions():
+    if active_ferm_sessions == {}:
+        active_ferm_session_files = list(ferm_active_sessions_path().glob(file_glob_pattern))
+        for file in active_ferm_session_files:
+            # print('DEBUG: restore_active_sessions() found {} as an active session'.format(file))
+            ferm_session = load_ferm_session(file)
+            # print('DEBUG: restore_active_sessions() {}'.format(ferm_session))
+            uid = ferm_session['uid']
+            if uid not in active_ferm_sessions:
+                active_ferm_sessions[uid] = PicoFermSession()
+
+            session = active_ferm_sessions[uid]
+            session.file = open(file, 'a')
+            session.file.flush()
+            session.filepath = file
+            session.alias = ferm_session['alias']
+            session.start_time = ferm_session['date']
+            session.active = True
+
+            session.data = ferm_session['data']
+            session.graph = ferm_session['graph']
+            active_ferm_sessions[ferm_session['uid']] = session
+
+
+def restore_active_iSpindel_sessions():
+    if active_iSpindel_sessions == {}:
+        active_iSpindel_session_files = list(iSpindel_active_sessions_path().glob(file_glob_pattern))
+        for file in active_iSpindel_session_files:
+            # print('DEBUG: restore_active_sessions() found {} as an active session'.format(file))
+            ferm_session = load_iSpindel_session(file)
+            # print('DEBUG: restore_active_sessions() {}'.format(ferm_session))
+            if ferm_session['uid'] not in active_iSpindel_sessions:
+                active_iSpindel_sessions[ferm_session['uid']] = []
+
+            session = iSpindelSession()
+            session.file = open(file, 'a')
+            session.file.flush()
+            session.filepath = file
+            session.alias = ferm_session['alias']
+            session.start_time = ferm_session['date']
+
+            session.data = ferm_session['data']
+            session.graph = ferm_session['graph']
+            active_iSpindel_sessions[ferm_session['uid']] = session
+
+
+def restore_active_sessions():
+    # initialize active sessions during start up
+    restore_active_brew_sessions()
+    restore_active_ferm_sessions()
+    restore_active_iSpindel_sessions()
