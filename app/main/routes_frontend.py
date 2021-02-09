@@ -28,6 +28,14 @@ yaml = YAML()
 # -------- Routes --------
 @main.route('/')
 def index():
+    #archived_brews=[]
+    #brews = load_brew_sessions()
+    #print(brews)
+    #for junk in brews:
+    #    archived_brews.append(junk['name'])
+    #print(archived_brews)
+    archives=load_archived_brews()
+    print(archives)
     return render_template_with_defaults('index.html', brew_sessions=load_active_brew_sessions(),
                            ferm_sessions=load_active_ferm_sessions(),
                            iSpindel_sessions=load_active_iSpindel_sessions())
@@ -522,6 +530,14 @@ def load_brew_sessions(uid=None):
     brew_sessions = [parse_brew_session(file) for file in sorted(files, reverse=True)]
     return list(filter(lambda x: x != None, brew_sessions))
 
+def load_archived_brews():
+    archived_brews=[]
+    brews = load_brew_sessions()
+    #print(brews)
+    for junk in brews:
+        archived_brews.append(junk['name'])
+    #print(archived_brews)
+    return archived_brews    
 
 def parse_ferm_session(file):
     try:
