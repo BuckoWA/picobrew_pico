@@ -68,7 +68,7 @@ def load_brew_session(file):
         session_type = int(info[4])
 
     session = {
-        'date': info[0],
+        'date': datetime.strptime(info[0], '%Y%m%d_%H%M%S'),
         'name': name,
         'filename': Path(file).name,
         'filepath': Path(file),
@@ -146,9 +146,9 @@ def get_brew_graph_data(chart_id, session_name, session_step, session_data, is_p
     else:
         graph_data.update({'series': [
             {'name': 'Wort', 'data': wort_data},
-            {'name': 'Heat Loop', 'data': heat1_data},
+            {'name': 'Heat Loop (Glycol)', 'data': heat1_data},
             {'name': 'Board', 'data': board_data},
-            {'name': 'Heat Loop 2', 'data': heat2_data}
+            {'name': 'Heat Loop (Element)', 'data': heat2_data}
         ]})
     return graph_data
 
@@ -168,7 +168,7 @@ def load_ferm_session(file):
         'filename': Path(file).name,
         'filepath': Path(file),
         'alias': alias,
-        'date': info[0],
+        'date': datetime.strptime(info[0], '%Y%m%d_%H%M%S'),
         'name': name,  # should change to brew/user defined session name
         'data': json_data,
         'graph': get_ferm_graph_data(chart_id, None, json_data)
@@ -292,7 +292,7 @@ def restore_active_ferm_sessions():
             session.file = open(file, 'a')
             session.file.flush()
             session.filepath = file
-            session.start_time = datetime.strptime(ferm_session['date'], '%Y%m%d_%H%M%S')
+            session.start_time = ferm_session['date']
             session.active = True
 
             session.uninit = False
@@ -317,7 +317,7 @@ def restore_active_iSpindel_sessions():
             session.file = open(file, 'a')
             session.file.flush()
             session.filepath = file
-            session.start_time = datetime.strptime(iSpindel_session['date'], '%Y%m%d_%H%M%S')
+            session.start_time = iSpindel_session['date']
             session.active = True
 
             session.uninit = False

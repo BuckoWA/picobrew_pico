@@ -10,7 +10,7 @@ from . import main
 from .config import MachineType, brew_active_sessions_path, pico_firmware_path
 from .firmware import firmware_filename, minimum_firmware, firmware_upgrade_required
 from .model import PicoBrewSession, PICO_SESSION
-from .routes_frontend import get_pico_recipes
+from .routes_frontend import get_pico_recipes, load_brew_sessions
 from .session_parser import active_brew_sessions
 
 arg_parser = FlaskParser()
@@ -51,9 +51,12 @@ check_firmware_args = {
 @main.route('/API/pico/checkFirmware')
 @use_args(check_firmware_args, location='querystring')
 def process_check_firmware(args):
+    uid = args['uid']
     # only give update available if machine type is known (C firmware != S/Pro Firmware)
-    if args['uid'] in active_brew_sessions and firmware_upgrade_required(active_brew_sessions[args['uid']].machine_type, args['version']):
-        return '#T#'
+    if uid in active_brew_sessions:
+        active_session = active_brew_sessions[uid]
+        if active_session.machine_type and firmware_upgrade_required(active_session.machine_type, args['version']):
+            return '#T#'
     return '#F#'
 
 
@@ -85,7 +88,8 @@ actions_needed_args = {
 @main.route('/API/pico/getActionsNeeded')
 @use_args(actions_needed_args, location='querystring')
 def process_get_actions_needed(args):
-    # TODO : Respond with periodic Deep Clean?
+    if dirty_sessions_since_clean(args['uid']) >= 3:
+        return '#7#'
     return '##'
 
 
@@ -247,8 +251,25 @@ def get_recipe_name_by_id(recipe_id):
 def get_recipe_list():
     recipe_list = ''
     for r in get_pico_recipes():
-        recipe_list += r.id + ',' + r.name + '|'
+        recipe_list += f'{r.id},{r.name}|'
     return recipe_list
+
+
+def dirty_sessions_since_clean(uid):
+    brew_sessions = load_brew_sessions(uid)
+    post_clean_sessions = []
+    clean_found = False
+    for s in brew_sessions:
+        session_name = s.get('name')
+        
+        if (session_name == "CLEAN" or session_name == "DEEP CLEAN"):
+            clean_found = True
+
+
+        if (not clean_found and session_name not in ["RINSE", "CLEAN", "DEEP CLEAN", "RACK", "DRAIN"]):
+            post_clean_sessions.append(s)
+
+    return len(post_clean_sessions)
 
 
 def create_new_session(uid, sesId, sesType):
